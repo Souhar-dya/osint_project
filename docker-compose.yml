@@ -1,0 +1,96 @@
+# Docker Compose for OSINT Monitoring System
+version: '3.8'
+
+services:
+  # FastAPI Backend with GPU Support
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.cuda
+    container_name: osint-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://osint:osint_password@db:5432/osint_db
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=false
+      - CUDA_VISIBLE_DEVICES=0
+      - USE_GPU=true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - model_cache:/root/.cache/huggingface
+    # GPU Support - requires nvidia-container-toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - osint-network
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: osint-db
+    environment:
+      - POSTGRES_USER=osint
+      - POSTGRES_PASSWORD=osint_password
+      - POSTGRES_DB=osint_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osint -d osint_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - osint-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: osint-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - osint-network
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: osint-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@osint.local
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    restart: unless-stopped
+    networks:
+      - osint-network
+    profiles:
+      - dev
+
+volumes:
+  postgres_data:
+  redis_data:
+  model_cache:
+
+networks:
+  osint-network:
+    driver: bridge

@@ -1,0 +1,58 @@
+misinfo_patterns:
+  satire:
+    patterns:
+      - "this is not real news"
+      - "this post.*satire"
+      - "for entertainment purposes only"
+      - "satire"
+      - "parody"
+      - "this is satire"
+      - "this is a parody"
+      - "not real news"
+    weight: -0.5
+  unverified_claim:
+    patterns:
+      - "breaking:?\\s*\\w+"
+      - "just\\s+in:?\\s*\\w+"
+      - "confirmed:?\\s*\\w+"
+      - "exposed:?\\s*\\w+"
+      - "leaked:?\\s*\\w+"
+    weight: 0.15
+  sensational_language:
+    patterns:
+      - "you\\s+won'?t\\s+believe"
+      - "they\\s+don'?t\\s+want\\s+you\\s+to\\s+know"
+      - "mainstream\\s+media\\s+won'?t"
+      - "what\\s+they'?re\\s+hiding"
+      - "the\\s+truth\\s+about"
+      - "exposed"
+      - "bombshell"
+      - "shocking\\s+truth"
+    weight: 0.2
+
+credibility_patterns:
+  - pattern: "according to (\\w+\\s+)?reuters"
+    reduction: -0.10
+  - pattern: "according to (\\w+\\s+)?associated press"
+    reduction: -0.10
+  - pattern: "study (shows|finds|suggests|published)"
+    reduction: -0.08
+# ... (add all other credibility patterns)
+
+civic_journalism_patterns:
+  - pattern: "(road|bridge|flyover|footpath|pavement)\\s+(broke|broken|damaged|collapsed|cracked|pothole)"
+    reduction: -0.15
+  - pattern: "(built|constructed|repaired)\\s+.*(broke|damaged|collapsed)\\s+within\\s+\\d+\\s+(days?|weeks?|months?)"
+    reduction: -0.18
+# ... (add all other civic journalism patterns)
+
+legitimate_criticism_topics:
+  - infrastructure
+  - road
+  - construction
+  - corruption
+  - accountability
+  - taxpayer
+  - public works
+  - municipality
+  - civic

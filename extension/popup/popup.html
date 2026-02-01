@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OSINT Monitor</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🔍</span>
+        <span class="logo-text">OSINT Monitor</span>
+      </div>
+      <div class="status" id="status">
+        <span class="status-dot"></span>
+        <span class="status-text">Checking...</span>
+      </div>
+    </header>
+    
+    <!-- Quick Analysis -->
+    <section class="section">
+      <h2 class="section-title">Quick Analysis</h2>
+      <textarea 
+        id="text-input" 
+        class="text-input" 
+        placeholder="Paste text to analyze..."
+        rows="4"
+      ></textarea>
+      <button id="analyze-btn" class="btn btn-primary">
+        <span class="btn-icon">🔍</span>
+        Analyze Text
+      </button>
+    </section>
+    
+    <!-- Results -->
+    <section class="section" id="results-section" style="display: none;">
+      <h2 class="section-title">Analysis Results</h2>
+      <div id="results" class="results"></div>
+    </section>
+    
+    <!-- Settings -->
+    <section class="section">
+      <h2 class="section-title">Settings</h2>
+      
+      <div class="setting">
+        <label class="setting-label">
+          <input type="checkbox" id="setting-enabled" checked>
+          <span>Enable Extension</span>
+        </label>
+      </div>
+      
+      <div class="setting">
+        <label class="setting-label">
+          <input type="checkbox" id="setting-overlay" checked>
+          <span>Show Overlay on Posts</span>
+        </label>
+      </div>
+      
+      <div class="setting">
+        <label class="setting-label">
+          <input type="checkbox" id="setting-anonymize" checked>
+          <span>Anonymize @mentions</span>
+        </label>
+        <span class="setting-hint">🔒 For ethical compliance</span>
+      </div>
+      
+      <div class="setting">
+        <label class="setting-label">
+          <input type="checkbox" id="setting-baseline" checked>
+          <span>Compare with Event Baselines</span>
+        </label>
+        <span class="setting-hint">📊 GDELT/FEVER comparison</span>
+      </div>
+      
+      <div class="setting">
+        <label class="setting-label">
+          <input type="checkbox" id="setting-public-only" checked>
+          <span>Analyze Public Content Only</span>
+        </label>
+        <span class="setting-hint">⚖️ Ethical OSINT</span>
+      </div>
+    </section>
+    
+    <!-- API Settings -->
+    <section class="section">
+      <h2 class="section-title">API Configuration</h2>
+      <div class="input-group">
+        <label for="api-url">Backend URL</label>
+        <input 
+          type="text" 
+          id="api-url" 
+          class="text-field"
+          value="http://localhost:8000/api"
+        >
+      </div>
+      <button id="test-connection" class="btn btn-secondary">
+        Test Connection
+      </button>
+    </section>
+    
+    <!-- Footer -->
+    <footer class="footer">
+      <span>v1.0.0</span>
+      <a href="#" id="about-link">About</a>
+    </footer>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
