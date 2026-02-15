@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 
-from app.routers import analysis, health, batch
+from app.routers import analysis, health, batch, crawler
 from app.database import init_db
 from app.services.model_loader import load_all_models
 
@@ -47,6 +47,7 @@ app.add_middleware(
 app.include_router(health.router, tags=["Health"])
 app.include_router(analysis.router, prefix="/api", tags=["Analysis"])
 app.include_router(batch.router, prefix="/api", tags=["Batch"])
+app.include_router(crawler.router, prefix="/api", tags=["Crawler"])
 
 
 @app.get("/")
@@ -57,6 +58,9 @@ async def root():
         "endpoints": {
             "analyze": "/api/analyze",
             "batch": "/api/batch",
+            "crawler_search": "/api/crawler/search",
+            "crawler_quick_check": "/api/crawler/quick-check",
+            "crawler_sources": "/api/crawler/sources",
             "health": "/health"
         }
     }

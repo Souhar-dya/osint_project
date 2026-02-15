@@ -457,6 +457,39 @@
           </span>
         </div>
         
+        ${misinfo.verification_verdict ? `
+        <div class="osint-row">
+          <span class="osint-label">Verification:</span>
+          <span class="osint-value" style="color: ${misinfo.verification_verdict?.includes('AUTHENTIC') ? '#27ae60' : misinfo.verification_verdict?.includes('FAKE') ? '#e74c3c' : '#f39c12'}; font-weight:600;">
+            ${misinfo.verification_verdict?.replace(/_/g, ' ')}
+          </span>
+        </div>
+        ` : ''}
+        
+        ${misinfo.credibility_score != null ? `
+        <div class="osint-row">
+          <span class="osint-label">Credibility:</span>
+          <span class="osint-value" style="color: ${misinfo.credibility_score > 0.6 ? '#27ae60' : misinfo.credibility_score > 0.35 ? '#f39c12' : '#e74c3c'}">
+            ${Math.round(misinfo.credibility_score * 100)}%
+          </span>
+        </div>
+        ` : ''}
+        
+        ${(misinfo.verified_sources && misinfo.verified_sources.length > 0) ? `
+        <div class="osint-section" style="margin-top:10px;">
+          <div style="font-size:12px; font-weight:600; color:#94a3b8; margin-bottom:6px;">📰 Verified Against:</div>
+          ${misinfo.verified_sources.slice(0, 4).map(s => `
+            <div style="display:flex; align-items:center; gap:6px; padding:4px 0; font-size:11px; border-bottom:1px solid rgba(255,255,255,0.05);">
+              <span style="color:${s.trust_level === 'trusted' ? '#27ae60' : s.trust_level === 'unreliable' ? '#e74c3c' : '#f39c12'};">●</span>
+              <a href="${s.url}" target="_blank" rel="noopener" style="color:#93c5fd; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px;" title="${s.title}">
+                ${s.source || s.domain}
+              </a>
+              <span style="color:#64748b; font-size:10px; margin-left:auto;">${s.trust_level}</span>
+            </div>
+          `).join('')}
+        </div>
+        ` : ''}
+        
         <div class="osint-row">
           <span class="osint-label">Narrative Distance:</span>
           <span class="osint-value" style="color: ${riskColor}">
@@ -490,6 +523,7 @@
   
   /**
    * Extract a Twitter/X thread (original + replies)
+   * Collects visible replies on the page (Twitter lazy-loads, so scroll for more)
    */
   function extractThread(originalPost) {
     const thread = {
@@ -500,6 +534,7 @@
     // Get all tweets on the page after the original
     const allPosts = document.querySelectorAll(selectors.posts);
     let foundOriginal = false;
+    const seenTexts = new Set(); // Avoid duplicates
     
     allPosts.forEach((post, index) => {
       if (post === originalPost) {
@@ -507,9 +542,10 @@
         return;
       }
       
-      if (foundOriginal && thread.replies.length < 20) {
+      if (foundOriginal && thread.replies.length < 50) { // Increased limit to 50
         const text = extractText(post);
-        if (text && text.length > 5) {
+        if (text && text.length > 10 && !seenTexts.has(text)) {
+          seenTexts.add(text);
           thread.replies.push(text);
         }
       }
@@ -556,9 +592,12 @@
       const thread = extractThread(post);
       
       if (thread.replies.length === 0) {
-        showNotification(post, 'No replies found to analyze', 'warning');
+        showNotification(post, 'No replies found. Scroll down to load replies first.', 'warning');
         return;
       }
+      
+      // Show how many replies will be analyzed
+      console.log(`Analyzing ${thread.replies.length} visible replies (scroll to load more)`);
       
       const result = await chrome.runtime.sendMessage({
         type: 'ANALYZE_THREAD',
@@ -570,6 +609,11 @@
       
       if (result.error) {
         throw new Error(result.error);
+      }
+      
+      // Add note about limited replies if applicable
+      if (thread.replies.length < 20) {
+        result.note = `Only ${thread.replies.length} replies were visible. Scroll down for more replies before analyzing.`;
       }
       
       displayThreadResults(post, result);
@@ -968,6 +1012,97 @@
   }
   
   /**
+   * Show dropdown overlay for analysis options
+   */
+  function showDropdownOverlay(post) {
+    // Remove any existing dropdown overlay
+    document.querySelectorAll('.osint-dropdown-overlay, .osint-dropdown-backdrop').forEach(el => el.remove());
+    
+    // Save current scroll position BEFORE anything changes
+    const savedScrollX = window.scrollX;
+    const savedScrollY = window.scrollY;
+    
+    // Create backdrop
+    const backdrop = document.createElement('div');
+    backdrop.className = 'osint-dropdown-backdrop';
+    backdrop.style.cssText = 'position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; width:100vw !important; height:100vh !important; background:rgba(0,0,0,0.7) !important; z-index:2147483646 !important;';
+    
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'osint-dropdown-overlay';
+    overlay.style.cssText = 'position:fixed !important; top:50% !important; left:50% !important; transform:translate(-50%,-50%) !important; background:#1e293b !important; border-radius:16px !important; box-shadow:0 16px 48px rgba(0,0,0,0.5) !important; z-index:2147483647 !important; min-width:320px !important; max-width:90vw !important; border:1px solid rgba(255,255,255,0.1) !important; overflow:visible !important;';
+    overlay.innerHTML = `
+      <div class="osint-dropdown-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid rgba(255,255,255,0.1); background:linear-gradient(135deg,#1e40af 0%,#2563eb 100%); border-radius:16px 16px 0 0;">
+        <span style="font-size:16px; font-weight:600; color:#f1f5f9;">Analysis Options</span>
+        <button class="osint-dropdown-close" style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; background:rgba(255,255,255,0.1); border:none; border-radius:50%; color:white; font-size:16px; cursor:pointer;">✕</button>
+      </div>
+      <button class="osint-dropdown-item" data-action="full" style="display:flex; align-items:center; gap:12px; width:100%; padding:14px 20px; background:#1e293b; border:none; color:#e2e8f0; font-size:15px; text-align:left; cursor:pointer;">
+        <span class="icon" style="font-size:24px;">🔍</span>
+        <span class="text" style="display:flex; flex-direction:column; gap:2px;">
+          <strong style="font-size:14px; font-weight:600; color:#f1f5f9;">Full Analysis</strong>
+          <small style="font-size:12px; color:#94a3b8;">Sentiment, topic, misinfo risk & more</small>
+        </span>
+      </button>
+      <button class="osint-dropdown-item" data-action="verify" style="display:flex; align-items:center; gap:12px; width:100%; padding:14px 20px; background:#1e293b; border:none; color:#e2e8f0; font-size:15px; text-align:left; cursor:pointer;">
+        <span class="icon" style="font-size:24px;">🔎</span>
+        <span class="text" style="display:flex; flex-direction:column; gap:2px;">
+          <strong style="font-size:14px; font-weight:600; color:#f1f5f9;">Verify Claim</strong>
+          <small style="font-size:12px; color:#94a3b8;">Check against misinformation patterns + ML</small>
+        </span>
+      </button>
+      <button class="osint-dropdown-item" data-action="thread" style="display:flex; align-items:center; gap:12px; width:100%; padding:14px 20px; background:#1e293b; border:none; color:#e2e8f0; font-size:15px; text-align:left; cursor:pointer;">
+        <span class="icon" style="font-size:24px;">🧵</span>
+        <span class="text" style="display:flex; flex-direction:column; gap:2px;">
+          <strong style="font-size:14px; font-weight:600; color:#f1f5f9;">Analyze Thread</strong>
+          <small style="font-size:12px; color:#94a3b8;">Analyze replies and stance distribution</small>
+        </span>
+      </button>
+      <button class="osint-dropdown-item" data-action="quote" style="display:flex; align-items:center; gap:12px; width:100%; padding:14px 20px; background:#1e293b; border:none; color:#e2e8f0; font-size:15px; text-align:left; cursor:pointer;">
+        <span class="icon" style="font-size:24px;">💬</span>
+        <span class="text" style="display:flex; flex-direction:column; gap:2px;">
+          <strong style="font-size:14px; font-weight:600; color:#f1f5f9;">Quote Tweet Analysis</strong>
+          <small style="font-size:12px; color:#94a3b8;">Compare original vs quote sentiment</small>
+        </span>
+      </button>
+    `;
+    
+    // Close function
+    const closeOverlay = () => {
+      backdrop.remove();
+      overlay.remove();
+    };
+    
+    // Close button
+    overlay.querySelector('.osint-dropdown-close').addEventListener('click', () => closeOverlay());
+    
+    // Close on backdrop click
+    backdrop.addEventListener('click', () => closeOverlay());
+    
+    // Handle dropdown actions
+    overlay.querySelectorAll('.osint-dropdown-item').forEach(item => {
+      item.addEventListener('click', () => {
+        closeOverlay();
+        const action = item.dataset.action;
+        if (action === 'full') {
+          analyzePost(post);
+        } else if (action === 'verify') {
+          verifyClaim(post);
+        } else if (action === 'thread') {
+          analyzeThread(post);
+        } else if (action === 'quote') {
+          analyzeQuoteTweet(post);
+        }
+      });
+    });
+    
+    document.body.appendChild(backdrop);
+    document.body.appendChild(overlay);
+    
+    // Restore scroll position (prevent scroll-to-top)
+    window.scrollTo(savedScrollX, savedScrollY);
+  }
+  
+  /**
    * Add enhanced analyze button with dropdown
    */
   function addAnalyzeButton(post) {
@@ -982,11 +1117,33 @@
     btn.className = 'osint-analyze-btn';
     btn.innerHTML = '🔍 Analyze';
     btn.title = 'Analyze this post with OSINT Monitor';
+    btn.setAttribute('type', 'button');
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('tabindex', '0');
+    btn.setAttribute('data-osint-btn', 'analyze');
     
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      analyzePost(post);
+    // Store post reference
+    const postRef = post;
+    
+    // Use onclick property
+    btn.onclick = function(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+      analyzePost(postRef);
+      return false;
+    };
+    
+    // Block all pointer/mouse events at capture phase
+    ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(eventType => {
+      btn.addEventListener(eventType, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return false;
+      }, true);
     });
     
     // Dropdown for additional options (only on Twitter/X)
@@ -995,95 +1152,33 @@
       dropdownBtn.className = 'osint-dropdown-btn';
       dropdownBtn.title = 'More options';
       dropdownBtn.innerHTML = '▼';
+      dropdownBtn.setAttribute('type', 'button');
+      dropdownBtn.setAttribute('role', 'button');
+      dropdownBtn.setAttribute('tabindex', '0');
+      dropdownBtn.setAttribute('data-osint-btn', 'dropdown');
       
-      // Toggle dropdown - create overlay appended to body (like analysis overlay)
-      dropdownBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Remove any existing dropdown overlay
-        document.querySelectorAll('.osint-dropdown-overlay, .osint-dropdown-backdrop').forEach(el => el.remove());
-        
-        // Create backdrop with inline styles to ensure they're applied
-        const backdrop = document.createElement('div');
-        backdrop.className = 'osint-dropdown-backdrop';
-        backdrop.style.cssText = 'position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; width:100vw !important; height:100vh !important; background:rgba(0,0,0,0.7) !important; z-index:2147483646 !important;';
-        
-        // Create overlay with inline styles
-        const overlay = document.createElement('div');
-        overlay.className = 'osint-dropdown-overlay';
-        overlay.style.cssText = 'position:fixed !important; top:50% !important; left:50% !important; transform:translate(-50%,-50%) !important; background:#1e293b !important; border-radius:16px !important; box-shadow:0 16px 48px rgba(0,0,0,0.5) !important; z-index:2147483647 !important; min-width:320px !important; max-width:90vw !important; border:1px solid rgba(255,255,255,0.1) !important; overflow:visible !important;';
-        overlay.innerHTML = `
-          <div class="osint-dropdown-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid rgba(255,255,255,0.1); background:linear-gradient(135deg,#1e40af 0%,#2563eb 100%); border-radius:16px 16px 0 0;">
-            <span style="font-size:16px; font-weight:600; color:#f1f5f9;">� Analysis Options</span>
-            <button class="osint-dropdown-close" style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; background:rgba(255,255,255,0.1); border:none; border-radius:50%; color:white; font-size:16px; cursor:pointer;">✕</button>
-          </div>
-          <button class="osint-dropdown-item" data-action="full" style="display:flex; align-items:center; gap:12px; width:100%; padding:14px 20px; background:#1e293b; border:none; color:#e2e8f0; font-size:15px; text-align:left; cursor:pointer;">
-            <span class="icon" style="font-size:24px;">🔍</span>
-            <span class="text" style="display:flex; flex-direction:column; gap:2px;">
-              <strong style="font-size:14px; font-weight:600; color:#f1f5f9;">Full Analysis</strong>
-              <small style="font-size:12px; color:#94a3b8;">Sentiment, topic, misinfo risk & more</small>
-            </span>
-          </button>
-          <button class="osint-dropdown-item" data-action="verify" style="display:flex; align-items:center; gap:12px; width:100%; padding:14px 20px; background:#1e293b; border:none; color:#e2e8f0; font-size:15px; text-align:left; cursor:pointer;">
-            <span class="icon" style="font-size:24px;">🔎</span>
-            <span class="text" style="display:flex; flex-direction:column; gap:2px;">
-              <strong style="font-size:14px; font-weight:600; color:#f1f5f9;">Verify Claim</strong>
-              <small style="font-size:12px; color:#94a3b8;">Check against misinformation patterns + ML</small>
-            </span>
-          </button>
-          <button class="osint-dropdown-item" data-action="thread" style="display:flex; align-items:center; gap:12px; width:100%; padding:14px 20px; background:#1e293b; border:none; color:#e2e8f0; font-size:15px; text-align:left; cursor:pointer;">
-            <span class="icon" style="font-size:24px;">🧵</span>
-            <span class="text" style="display:flex; flex-direction:column; gap:2px;">
-              <strong style="font-size:14px; font-weight:600; color:#f1f5f9;">Analyze Thread</strong>
-              <small style="font-size:12px; color:#94a3b8;">Analyze replies and stance distribution</small>
-            </span>
-          </button>
-          <button class="osint-dropdown-item" data-action="quote" style="display:flex; align-items:center; gap:12px; width:100%; padding:14px 20px; background:#1e293b; border:none; color:#e2e8f0; font-size:15px; text-align:left; cursor:pointer;">
-            <span class="icon" style="font-size:24px;">💬</span>
-            <span class="text" style="display:flex; flex-direction:column; gap:2px;">
-              <strong style="font-size:14px; font-weight:600; color:#f1f5f9;">Quote Tweet Analysis</strong>
-              <small style="font-size:12px; color:#94a3b8;">Compare original vs quote sentiment</small>
-            </span>
-          </button>
-        `;
-        
-        // Close function
-        const closeOverlay = () => {
-          backdrop.remove();
-          overlay.remove();
-          document.body.style.overflow = '';
-        };
-        
-        // Close button
-        overlay.querySelector('.osint-dropdown-close').addEventListener('click', closeOverlay);
-        
-        // Close on backdrop click
-        backdrop.addEventListener('click', closeOverlay);
-        
-        // Handle dropdown actions
-        overlay.querySelectorAll('.osint-dropdown-item').forEach(item => {
-          item.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeOverlay();
-            
-            const action = item.dataset.action;
-            if (action === 'full') {
-              analyzePost(post);
-            } else if (action === 'verify') {
-              verifyClaim(post);
-            } else if (action === 'thread') {
-              analyzeThread(post);
-            } else if (action === 'quote') {
-              analyzeQuoteTweet(post);
-            }
-          });
-        });
-        
-        document.body.style.overflow = 'hidden';
-        document.body.appendChild(backdrop);
-        document.body.appendChild(overlay);
+      // Store post reference for later
+      const postRef = post;
+      
+      // Use onclick property (more reliable than addEventListener for stopping Twitter)
+      dropdownBtn.onclick = function(e) {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+        }
+        showDropdownOverlay(postRef);
+        return false;
+      };
+      
+      // Block all pointer/mouse events at capture phase
+      ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(eventType => {
+        dropdownBtn.addEventListener(eventType, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          return false;
+        }, true);
       });
       
       container.appendChild(btn);

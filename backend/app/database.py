@@ -50,6 +50,25 @@ class AnalysisLog(Base):
     anonymized = Column(Boolean, default=True)
 
 
+class CrawlCache(Base):
+    """Cache for crawled news results to avoid re-crawling"""
+    __tablename__ = "crawl_cache"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    query_hash = Column(String(64), index=True)  # SHA256 of query
+    query = Column(String(1000))
+    article_title = Column(String(500))
+    article_url = Column(String(2000))
+    article_source = Column(String(200))
+    article_domain = Column(String(200))
+    snippet = Column(Text)
+    crawl_source = Column(String(50))  # google_news, gdelt, newsapi
+    credibility_score = Column(Float, nullable=True)
+    verdict = Column(String(50), nullable=True)
+    cached_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime)  # Cache TTL
+
+
 class BaselineEvent(Base):
     """Cached baseline events from GDELT/FEVER"""
     __tablename__ = "baseline_events"

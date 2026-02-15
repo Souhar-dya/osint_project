@@ -191,6 +191,46 @@ function displayResults(result) {
       <span class="result-label">Misinfo Risk</span>
       <span class="result-value ${misinfo.risk_level}">${(misinfo.risk_level || 'unknown').toUpperCase()} (${Math.round((misinfo.risk_score || 0) * 100)}%)</span>
     </div>
+  `;
+  
+  // Verification verdict from crawler
+  if (misinfo.verification_verdict) {
+    const verdictColor = misinfo.verification_verdict.includes('AUTHENTIC') ? '#27ae60' : 
+                         misinfo.verification_verdict.includes('FAKE') ? '#e74c3c' : '#f39c12';
+    html += `
+      <div class="result-row">
+        <span class="result-label">Verification</span>
+        <span class="result-value" style="color:${verdictColor}; font-weight:600;">${misinfo.verification_verdict.replace(/_/g, ' ')}</span>
+      </div>
+    `;
+  }
+  
+  if (misinfo.credibility_score != null) {
+    const credColor = misinfo.credibility_score > 0.6 ? '#27ae60' : misinfo.credibility_score > 0.35 ? '#f39c12' : '#e74c3c';
+    html += `
+      <div class="result-row">
+        <span class="result-label">Credibility</span>
+        <span class="result-value" style="color:${credColor}">${Math.round(misinfo.credibility_score * 100)}%</span>
+      </div>
+    `;
+  }
+  
+  // Verified sources from crawler
+  if (misinfo.verified_sources && misinfo.verified_sources.length > 0) {
+    html += `<div style="margin-top:8px; padding:8px; background:rgba(255,255,255,0.05); border-radius:6px;">
+      <div style="font-size:11px; font-weight:600; color:#94a3b8; margin-bottom:4px;">📰 Verified Against:</div>`;
+    misinfo.verified_sources.slice(0, 4).forEach(s => {
+      const dotColor = s.trust_level === 'trusted' ? '#27ae60' : s.trust_level === 'unreliable' ? '#e74c3c' : '#f39c12';
+      html += `<div style="display:flex; align-items:center; gap:4px; padding:2px 0; font-size:11px;">
+        <span style="color:${dotColor}">●</span>
+        <a href="${s.url}" target="_blank" style="color:#93c5fd; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px;">${s.source || s.domain}</a>
+        <span style="color:#64748b; font-size:9px; margin-left:auto;">${s.trust_level}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  
+  html += `
     <div class="result-row">
       <span class="result-label">Narrative Distance</span>
       <span class="result-value">${Math.round((baseline.narrative_distance || 0) * 100)}% ${baseline.deviation_type ? `(${baseline.deviation_type})` : ''}</span>

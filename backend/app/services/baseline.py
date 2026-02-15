@@ -65,6 +65,41 @@ SAMPLE_BASELINES = [
         "title": "5G Network Safety Studies",
         "description": "Multiple studies confirm 5G frequencies are non-ionizing and safe. No evidence linking 5G to health issues or virus transmission.",
         "topic": "Technology"
+    },
+    {
+        "event_id": "gdelt_trafficking_2024",
+        "source": "gdelt",
+        "title": "Human Trafficking & Exploitation Reports",
+        "description": "Human trafficking investigations involve complex legal proceedings. Victim identities are protected by law. Court documents and official investigations provide verified facts. Claims about specific cases should be verified against court records.",
+        "topic": "Social Issues"
+    },
+    {
+        "event_id": "gdelt_crime_justice_2024",
+        "source": "gdelt",
+        "title": "Criminal Justice Proceedings",
+        "description": "High-profile criminal cases follow due legal process. Allegations require evidence and due process. Media coverage may simplify or sensationalize complex legal matters. Verified information comes from court filings and official statements.",
+        "topic": "Security/Conflict"
+    },
+    {
+        "event_id": "fever_social_rights",
+        "source": "fever",
+        "title": "Social Rights and Civil Liberties",
+        "description": "Social justice issues involve nuanced policy discussions. Protests and movements reflect diverse viewpoints. Verified facts come from official reports, academic research, and established news organizations.",
+        "topic": "Social Issues"
+    },
+    {
+        "event_id": "gdelt_science_2024",
+        "source": "gdelt",
+        "title": "Scientific Research Standards",
+        "description": "Scientific claims require peer review and reproducibility. Preliminary findings differ from established consensus. Media often oversimplifies research results.",
+        "topic": "Science"
+    },
+    {
+        "event_id": "gdelt_entertainment_2024",
+        "source": "gdelt",
+        "title": "Entertainment Industry Reports",
+        "description": "Celebrity news and entertainment industry claims frequently mix facts with speculation. Verified information comes from official statements, court records, and established entertainment journalists.",
+        "topic": "Entertainment/Culture"
     }
 ]
 
@@ -117,6 +152,16 @@ def compare_baseline(text: str, topics: TopicResult) -> BaselineComparison:
         
         # Find closest baseline
         closest_baseline, max_similarity = max(similarities, key=lambda x: x[1])
+        
+        # Reject weak matches — if the best match is too dissimilar,
+        # the baseline is not relevant to this text at all
+        if max_similarity < 0.25:
+            return BaselineComparison(
+                narrative_distance=0.0,
+                closest_event=None,
+                event_source=None,
+                deviation_type=None
+            )
         
         # Calculate narrative distance (inverse of similarity)
         # 0 = perfectly aligned, 1 = completely distorted

@@ -21,6 +21,10 @@
   position: relative;
   z-index: 9999;
   box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+  pointer-events: auto !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  touch-action: manipulation;
 }
 
 .osint-analyze-btn:hover {
@@ -330,6 +334,9 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   position: relative;
   z-index: 9999;
+  pointer-events: auto !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 .osint-btn-container .osint-analyze-btn {
@@ -364,6 +371,10 @@
   cursor: pointer;
   font-size: 10px;
   transition: background 0.2s;
+  pointer-events: auto !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  touch-action: manipulation;
 }
 
 .osint-dropdown-btn:hover {

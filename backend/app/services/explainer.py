@@ -125,41 +125,79 @@ def _generate_reasoning(
     misinfo: MisinfoResult,
     baseline: BaselineComparison
 ) -> str:
-    """Generate human-readable reasoning"""
+    """Generate actionable, context-aware reasoning that adds insight beyond raw scores"""
     
     parts = []
     
-    # Sentiment reasoning
-    parts.append(f"Sentiment detected as {sentiment.label} ({sentiment.score:.0%} confidence).")
-    
-    # Topic reasoning
-    parts.append(f"Primary topic: {topics.topic_label}.")
-    
-    # Framing reasoning
-    if framing.propaganda_techniques:
-        techniques = ", ".join(framing.propaganda_techniques[:3])
-        parts.append(f"Detected framing patterns: {techniques}.")
-    else:
-        parts.append(f"Framing style: {framing.frame}.")
-    
-    # Misinformation reasoning
+    # Overall assessment first
     if misinfo.risk_level == "high":
-        parts.append(f"⚠️ HIGH misinformation risk detected. Triggers: {', '.join(misinfo.triggers[:3])}.")
+        parts.append("⚠️ This content shows significant red flags for misinformation.")
     elif misinfo.risk_level == "medium":
-        parts.append(f"Moderate misinformation indicators present.")
+        parts.append("This content contains some concerning elements worth verifying.")
     else:
-        parts.append("No significant misinformation indicators.")
+        parts.append("This content appears to be low-risk based on our analysis.")
     
-    # Baseline reasoning (RESEARCH NOVELTY)
-    if baseline.closest_event:
+    # Explain WHY sentiment matters in context
+    if sentiment.label == "negative" and sentiment.score > 0.8:
+        if misinfo.risk_level != "low":
+            parts.append("The highly negative tone may be designed to provoke emotional reactions rather than inform.")
+        else:
+            parts.append("The negative sentiment reflects the serious nature of the content.")
+    elif sentiment.label == "positive" and sentiment.score > 0.8:
+        if "health" in topics.topic_label.lower() or "cure" in str(misinfo.triggers).lower():
+            parts.append("Be cautious: overly positive health claims often lack evidence.")
+    
+    # Topic + Framing insight
+    if framing.propaganda_techniques:
+        techniques = framing.propaganda_techniques[:2]
+        if "fear_appeal" in techniques:
+            parts.append("This content uses fear-based messaging to influence your reaction.")
+        elif "loaded_language" in techniques:
+            parts.append("Notice the emotionally charged language - this may bias your perception.")
+        elif "appeal_to_authority" in techniques:
+            parts.append("Claims authority figures without verifiable sources.")
+        else:
+            parts.append(f"Rhetorical techniques detected: {', '.join(techniques)}.")
+    
+    # Misinformation triggers - explain specifically
+    if misinfo.triggers:
+        trigger_explanations = []
+        for trigger in misinfo.triggers[:2]:
+            if "urgent" in trigger.lower() or "breaking" in trigger.lower():
+                trigger_explanations.append("creates artificial urgency")
+            elif "share" in trigger.lower() or "forward" in trigger.lower():
+                trigger_explanations.append("pressures viral sharing")
+            elif "they don't want" in trigger.lower() or "hidden" in trigger.lower():
+                trigger_explanations.append("uses conspiracy framing")
+            elif "100%" in trigger.lower() or "guaranteed" in trigger.lower():
+                trigger_explanations.append("makes absolute claims without nuance")
+        
+        if trigger_explanations:
+            parts.append(f"Warning signs: {', '.join(trigger_explanations)}.")
+    
+    # Baseline comparison - the research novelty
+    if baseline.closest_event and baseline.deviation_type:
         if baseline.deviation_type == "aligned":
-            parts.append(f"Content aligns with verified information from {baseline.event_source}.")
+            parts.append(f"✓ Claims align with verified reporting from {baseline.event_source or 'trusted sources'}.")
         elif baseline.deviation_type == "contradiction":
-            parts.append(f"⚠️ Content CONTRADICTS verified information: {baseline.closest_event}.")
+            parts.append(f"✗ This contradicts verified information about: {baseline.closest_event}.")
         elif baseline.deviation_type == "exaggeration":
-            parts.append(f"Content exaggerates facts from: {baseline.closest_event}.")
+            parts.append(f"This appears to exaggerate facts from: {baseline.closest_event}.")
         elif baseline.deviation_type == "fabrication":
-            parts.append(f"⚠️ Claims not supported by verified baselines.")
+            parts.append("We found no verified sources supporting these specific claims.")
+        elif baseline.deviation_type == "selective":
+            parts.append(f"This selectively presents facts related to: {baseline.closest_event}.")
+    elif not baseline.closest_event and baseline.narrative_distance == 0.0:
+        # No relevant baseline found — don't make up a comparison
+        pass
+    
+    # Actionable recommendation
+    if misinfo.risk_level == "high":
+        parts.append("Recommendation: Do not share. Verify with multiple trusted sources.")
+    elif misinfo.risk_level == "medium":
+        parts.append("Recommendation: Check original sources before sharing.")
+    else:
+        parts.append("This content appears reasonable, but always verify important claims.")
     
     return " ".join(parts)
 

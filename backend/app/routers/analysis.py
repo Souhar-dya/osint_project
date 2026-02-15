@@ -43,7 +43,13 @@ from app.services.misinfo import detect_misinformation
 from app.services.baseline import compare_baseline
 from app.services.explainer import generate_explanation
 from app.services.image_analysis import analyze_image
+from app.services.news_crawler import NewsCrawler, TRUSTED_SOURCES, KNOWN_UNRELIABLE_SOURCES, SATIRE_SOURCES, extract_search_keywords
+from app.services.credibility_analyzer import analyze_credibility, _text_similarity
+from app.models.schemas import VerifiedSource
 from app.config import settings
+
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -91,7 +97,103 @@ async def analyze_text(
         if request.include_baseline:
             baseline = compare_baseline(cleaned_text, topics)
         
-        # Misinfo detection done - model output used directly
+        # Step 3.5: Real-time source verification via crawler
+        try:
+            crawler = NewsCrawler()
+            articles = await crawler.search_news(
+                query=cleaned_text,       # crawlers extract keywords for API queries
+                max_results=8,
+                enrich_text=False,
+                timespan="7d",
+                original_text=cleaned_text  # full text used for semantic scoring
+            )
+            await crawler.close()
+            
+            if articles:
+                cred_report = analyze_credibility(cleaned_text, articles)
+                
+                # Attach verified sources to misinfo result
+                # Only include articles that are actually relevant to the claim
+                search_kw = extract_search_keywords(cleaned_text, max_keywords=6).lower().split()
+                verified = []
+                for a in articles:
+                    # Check if article title shares key terms with the post
+                    title_lower = a.title.lower()
+                    title_sim = _text_similarity(cleaned_text, a.title + " " + a.snippet)
+                    kw_hits = sum(1 for kw in search_kw if kw.lower() in title_lower)
+
+                    # Skip articles that don't match the topic at all
+                    if title_sim < 0.04 and kw_hits < 2:
+                        continue
+
+                    domain = a.source_domain.lower()
+                    if any(t in domain for t in TRUSTED_SOURCES):
+                        trust = "trusted"
+                    elif any(u in domain for u in KNOWN_UNRELIABLE_SOURCES):
+                        trust = "unreliable"
+                    elif any(s in domain for s in SATIRE_SOURCES):
+                        trust = "satire"
+                    else:
+                        trust = "unknown"
+                    verified.append(VerifiedSource(
+                        title=a.title[:150],
+                        url=a.url,
+                        source=a.source,
+                        domain=a.source_domain,
+                        trust_level=trust
+                    ))
+                    if len(verified) >= 6:
+                        break
+                
+                misinfo.verified_sources = verified
+                misinfo.verification_verdict = cred_report.get("verdict", None)
+                misinfo.credibility_score = cred_report.get("credibility_score", None)
+                
+                # ── Reconcile misinfo risk with crawler evidence ──
+                # The DeBERTa misinfo model was trained on news articles, not
+                # social-media posts.  When the crawler finds real coverage of
+                # the event from trusted sources, we adjust the risk score
+                # downward to reflect the real-world evidence.
+                cred_score = cred_report.get("credibility_score", 0.0)
+                verdict = cred_report.get("verdict", "")
+                trusted_found = sum(1 for v in verified if v.trust_level == "trusted")
+                matching = cred_report.get("cross_reference", {}).get("matching_headlines", 0)
+                
+                if verdict in ("LIKELY_AUTHENTIC", "POSSIBLY_AUTHENTIC"):
+                    # Crawler says the event is confirmed → lower misinfo risk
+                    adjusted_risk = misinfo.risk_score * (1 - cred_score)
+                    # Floor: don't go below 0.05 (some risk always remains)
+                    misinfo.risk_score = round(max(adjusted_risk, 0.05), 4)
+                    if adjusted_risk < 0.4:
+                        misinfo.risk_level = "low"
+                    elif adjusted_risk < 0.65:
+                        misinfo.risk_level = "medium"
+                    logger.info(
+                        f"Crawler override: risk {misinfo.risk_score} "
+                        f"(cred={cred_score:.2f}, verdict={verdict}, "
+                        f"trusted={trusted_found}, matching={matching})"
+                    )
+                elif verdict == "UNVERIFIED" and trusted_found >= 1:
+                    # Trusted sources found but not fully conclusive
+                    adjusted_risk = misinfo.risk_score * 0.5
+                    misinfo.risk_score = round(max(adjusted_risk, 0.1), 4)
+                    if adjusted_risk < 0.65:
+                        misinfo.risk_level = "medium"
+                    logger.info(f"Crawler partial override (trusted): risk {misinfo.risk_score}")
+                elif verdict == "UNVERIFIED" and matching >= 1 and len(verified) >= 1:
+                    # At least one article headline matched the claim —
+                    # even if the source isn't in our "trusted" list, the
+                    # event is clearly being reported on.  Reduce risk.
+                    adjusted_risk = misinfo.risk_score * 0.65
+                    misinfo.risk_score = round(max(adjusted_risk, 0.15), 4)
+                    if adjusted_risk < 0.65:
+                        misinfo.risk_level = "medium"
+                    logger.info(
+                        f"Crawler partial override (matched): risk {misinfo.risk_score} "
+                        f"(matching={matching}, verified={len(verified)})"
+                    )
+        except Exception as e:
+            logger.warning(f"Crawler verification skipped: {e}")
         
         # Step 5: Generate explanation
         explanation = generate_explanation(
@@ -191,6 +293,7 @@ async def analyze_image_endpoint(
         
         if combined_text and len(combined_text) >= 10:
             # Clean and analyze text
+            text_start_time = time.time()
             cleaned_text = clean_text(combined_text)
             
             sentiment = analyze_sentiment(cleaned_text)
@@ -208,6 +311,8 @@ async def analyze_image_endpoint(
                 baseline=baseline
             )
             
+            text_processing_time = int((time.time() - text_start_time) * 1000)
+            
             text_analysis = AnalysisResponse(
                 sentiment=sentiment,
                 stance=stance,
@@ -216,7 +321,7 @@ async def analyze_image_endpoint(
                 misinformation=misinfo,
                 baseline=baseline,
                 explanation=explanation,
-                processing_time_ms=0,
+                processing_time_ms=text_processing_time,
                 timestamp=datetime.utcnow(),
                 anonymized=False
             )
@@ -345,6 +450,7 @@ async def analyze_video_endpoint(
         
         if combined_text.strip():
             # Clean text
+            text_start_time = time.time()
             cleaned_text = clean_text(combined_text)
             
             # Run analysis pipeline
@@ -398,6 +504,8 @@ async def analyze_video_endpoint(
             
             stance = analyze_stance(cleaned_text)  # Add stance
             
+            text_processing_time = int((time.time() - text_start_time) * 1000)
+            
             text_analysis = AnalysisResponse(
                 sentiment=sentiment,
                 stance=stance,
@@ -406,9 +514,9 @@ async def analyze_video_endpoint(
                 misinformation=final_misinfo,
                 baseline=baseline,
                 explanation=explanation,
-                processing_time_ms=0,
+                processing_time_ms=text_processing_time,
                 timestamp=datetime.utcnow(),
-                anonymized=True
+                anonymized=False  # No anonymization applied for video text extraction
             )
             
             overall_risk = final_risk_level

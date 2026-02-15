@@ -32,9 +32,6 @@ MODELS_DIR = PROJECT_ROOT / "models"
 # Custom trained DeBERTa sentiment model (Trial 0 - 95.24% accuracy)
 CUSTOM_SENTIMENT_MODEL = PROJECT_ROOT / "ml" / "training" / "models" / "unified_sentiment" / "trial_0" / "checkpoint-29000"
 CUSTOM_SENTIMENT_TOKENIZER = PROJECT_ROOT / "ml" / "training" / "models" / "unified_sentiment"
-# Custom trained DeBERTa stance model (93.15% F1 accuracy) - checkpoint-939
-CUSTOM_STANCE_MODEL = PROJECT_ROOT / "ml" / "training" / "models" / "stance_classifier" / "checkpoint-939"
-CUSTOM_STANCE_TOKENIZER = PROJECT_ROOT / "ml" / "training" / "models" / "stance_classifier"
 # Custom trained DeBERTa misinfo model (89% F1 accuracy) - checkpoint-1692
 CUSTOM_MISINFO_MODEL = PROJECT_ROOT / "ml" / "training" / "models" / "misinfo_classifier" / "checkpoint-1692"
 CUSTOM_MISINFO_TOKENIZER = PROJECT_ROOT / "ml" / "training" / "models" / "misinfo_classifier"
@@ -48,10 +45,10 @@ def get_device() -> str:
             _device = "cuda"
             gpu_name = torch.cuda.get_device_name(0)
             gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
-            logger.info(f"🚀 GPU detected: {gpu_name} ({gpu_mem:.1f} GB)")
+            logger.info(f"GPU detected: {gpu_name} ({gpu_mem:.1f} GB)")
         else:
             _device = "cpu"
-            logger.info("⚠️ No GPU detected, using CPU")
+            logger.info("No GPU detected, using CPU")
     return _device
 
 
@@ -74,7 +71,7 @@ def load_all_models():
         # ================================================================
         # 1. SENTIMENT MODEL - Custom DeBERTa (95.24% accuracy)
         # ================================================================
-        logger.info("Loading sentiment model (Custom DeBERTa - 95.24% accuracy)...")
+        logger.info("Loading sentiment model")
         
         # Load custom trained model
         if CUSTOM_SENTIMENT_MODEL.exists():
@@ -84,10 +81,10 @@ def load_all_models():
             _models["sentiment_model"].eval()
             _models["sentiment_labels"] = {0: "negative", 1: "neutral", 2: "positive"}
             _models["use_custom_sentiment"] = True
-            logger.info("  ✅ Custom DeBERTa sentiment model loaded (95.24% accuracy)")
+            logger.info("sentiment model loaded")
         else:
             # Fallback to HuggingFace model
-            logger.warning("  ⚠️ Custom model not found, using HuggingFace fallback...")
+            logger.warning("  [WARN] Custom model not found, using HuggingFace fallback...")
             _models["sentiment_pipeline"] = pipeline(
                 "sentiment-analysis",
                 model="cardiffnlp/twitter-roberta-base-sentiment-latest",
@@ -96,7 +93,7 @@ def load_all_models():
             )
             _models["sentiment_labels"] = {0: "negative", 1: "neutral", 2: "positive"}
             _models["use_custom_sentiment"] = False
-            logger.info("  ✅ Fallback sentiment model loaded (~94% accuracy)")
+            logger.info("  [OK] Fallback sentiment model loaded (~94% accuracy)")
         
         # # ================================================================
         # # OLD: CardiffNLP RoBERTa (~94% accuracy) - COMMENTED OUT
@@ -114,7 +111,7 @@ def load_all_models():
         # ================================================================
         # 2. STANCE MODEL - Zero-shot BART (custom model had issues)
         # ================================================================
-        logger.info("Loading stance model (Zero-shot BART)...")
+        logger.info("Loading stance model")
         
         # Use zero-shot classification - more reliable than broken custom model
         _models["stance_pipeline"] = pipeline(
@@ -124,37 +121,27 @@ def load_all_models():
         )
         _models["stance_labels"] = {0: "agree", 1: "disagree", 2: "discuss", 3: "unrelated"}
         _models["use_custom_stance"] = False
-        logger.info("  ✅ Stance model loaded (zero-shot BART)")
+        logger.info("Stance model loaded")
         
         # ================================================================
-        # 3. MISINFORMATION MODEL - Custom DeBERTa (89% F1 accuracy)
+        # 3. MISINFORMATION MODEL - Pre-trained RoBERTa (better generalization)
         # ================================================================
-        logger.info("Loading misinformation model (Custom DeBERTa - 89% F1)...")
+        logger.info("Loading misinformation model")
         
-        if CUSTOM_MISINFO_MODEL.exists():
-            _tokenizers["misinfo"] = AutoTokenizer.from_pretrained(str(CUSTOM_MISINFO_TOKENIZER))
-            _models["misinfo_model"] = AutoModelForSequenceClassification.from_pretrained(str(CUSTOM_MISINFO_MODEL))
-            _models["misinfo_model"].to(device)
-            _models["misinfo_model"].eval()
-            _models["misinfo_labels"] = {0: "fake", 1: "real"}
-            _models["use_custom_misinfo"] = True
-            logger.info("  ✅ Custom DeBERTa misinfo model loaded (89% F1)")
-        else:
-            # Fallback to HuggingFace model
-            logger.warning("  ⚠️ Custom misinfo model not found, using HuggingFace fallback...")
-            _models["misinfo_pipeline"] = pipeline(
-                "text-classification",
-                model="hamzab/roberta-fake-news-classification",
-                device=device_id
-            )
-            _models["misinfo_labels"] = {0: "fake", 1: "real"}
-            _models["use_custom_misinfo"] = False
-            logger.info("  ✅ Fallback misinfo model loaded (~85% accuracy)")
+        # Use pre-trained model for better generalization on real-world content
+        _models["misinfo_pipeline"] = pipeline(
+            "text-classification",
+            model="hamzab/roberta-fake-news-classification",
+            device=device_id
+        )
+        _models["misinfo_labels"] = {0: "fake", 1: "real"}
+        _models["use_custom_misinfo"] = False
+        logger.info("misinfo model loaded")
         
         # ================================================================
         # 4. FRAMING MODEL - Zero-shot with BART (standalone)
         # ================================================================
-        logger.info("Loading framing model (zero-shot BART)...")
+        logger.info("Loading framing model")
         
         _models["framing_pipeline"] = pipeline(
             "zero-shot-classification",
@@ -165,7 +152,7 @@ def load_all_models():
             0: "economic", 1: "political", 2: "health", 3: "security",
             4: "environmental", 5: "social", 6: "legal", 7: "other"
         }
-        logger.info("  ✅ Framing model loaded (zero-shot)")
+        logger.info("Framing model loaded")
         
         # ================================================================
         # 5. EMBEDDING MODEL (for topic extraction and similarity)
@@ -173,13 +160,13 @@ def load_all_models():
         logger.info("Loading embedding model...")
         from sentence_transformers import SentenceTransformer
         _models["embedder"] = SentenceTransformer("all-MiniLM-L6-v2", device=device)
-        logger.info("  ✅ Embedding model loaded")
+        logger.info("  [OK] Embedding model loaded")
         
         # Store device info
         _models["_device"] = device
         
         _loaded = True
-        logger.info(f"\n✅ All models loaded successfully on {device.upper()}!")
+        logger.info(f"\n[OK] All models loaded successfully on {device.upper()}!")
         
         # Log GPU memory usage
         if device == "cuda":
@@ -283,60 +270,18 @@ def predict_sentiment(text: str) -> Dict[str, Any]:
 
 
 def predict_stance(text: str, claim: str = None) -> Dict[str, Any]:
-    """Predict stance using custom DeBERTa model (93.15% F1 accuracy)
+    """Predict stance using Zero-shot BART (facebook/bart-large-mnli)
     
     Labels: agree, disagree, discuss, unrelated
     """
-    
-    # Use custom trained model if available
-    if _models.get("use_custom_stance") and "stance_model" in _models:
-        tokenizer = _tokenizers["stance"]
-        model = _models["stance_model"]
-        device = _models.get("_device", "cpu")
-        
-        # Combine text with claim if provided
-        input_text = f"{claim} [SEP] {text}" if claim else text
-        
-        # Tokenize
-        inputs = tokenizer(
-            input_text[:512],
-            return_tensors="pt",
-            truncation=True,
-            max_length=192,
-            padding=True
-        )
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-        
-        # Predict
-        with torch.no_grad():
-            outputs = model(**inputs)
-            probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-        
-        # Get scores - 4 class model: agree, disagree, discuss, unrelated
-        probs = probs[0].cpu().numpy()
-        labels = ["agree", "disagree", "discuss", "unrelated"]
-        scores = {label: float(probs[i]) for i, label in enumerate(labels)}
-        
-        best_idx = probs.argmax()
-        best_label = labels[best_idx]
-        confidence = float(probs[best_idx])
-        
-        return {
-            "label": best_label,
-            "confidence": confidence,
-            "scores": scores
-        }
-    
-    # Fallback to HuggingFace pipeline (zero-shot)
     if "stance_pipeline" not in _models:
         raise RuntimeError("Stance model not loaded")
     
-    # Map to zero-shot labels
-    premise = claim if claim else text
-    hypothesis = text if claim else ""
+    # Use claim as context if provided, otherwise just classify the text
+    input_text = f"{claim} {text}" if claim else text
     
     result = _models["stance_pipeline"](
-        premise[:512],
+        input_text[:512],
         candidate_labels=["agree", "disagree", "discuss", "unrelated"]
     )
     
