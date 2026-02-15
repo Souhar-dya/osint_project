@@ -222,7 +222,10 @@ MIT License - See LICENSE file
 
 ## 👥 Authors
 
-[Your Name] - [Your Institution]
+Souhardya Kundu
+Debanshu Prusty
+Subham Agarwal
+
 
 ## 🙏 Acknowledgments
 
